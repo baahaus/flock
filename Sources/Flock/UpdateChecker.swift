@@ -21,6 +21,15 @@ final class UpdateChecker {
 
     // Local changelog - update manually when cutting a release
     static let localChangelog: [ChangelogEntry] = [
+        ChangelogEntry(version: "0.10.0", date: "2026-05-14", changes: [
+            "Removed agent mode -- the kanban task queue is gone in favor of just running Claude sessions directly in panes",
+            "Removed the memory system and .flock-context.md syncing",
+            "Fixed the ~15-minute crash: cost tracker now reads session JSONL incrementally instead of reloading the whole file every 2s",
+            "Action history bounded to 500 entries to prevent unbounded growth",
+            "Broadcast mode now skips Claude panes showing a confirmation prompt so a stray Enter can't auto-accept it",
+            "Markdown panes now detect when a file is deleted on disk and prompt to save here or close the pane",
+            "Find bar shows running match cursor in accent color with a flash on each step",
+        ]),
         ChangelogEntry(version: "0.9.6", date: "2026-04-13", changes: [
             "Welcome card with animated pixel bird on first launch",
             "File menu: New Markdown File (⌘N), Open Markdown File (⌘O)",
