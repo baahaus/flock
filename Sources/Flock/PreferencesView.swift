@@ -14,7 +14,6 @@ class PreferencesView: NSView {
     private let activitySwitch = NSSwitch()
     private let claudeBordersSwitch = NSSwitch()
     private let soundSwitch = NSSwitch()
-    private let memorySwitch = NSSwitch()
     private let wrenSwitch = NSSwitch()
     private let usageSwitch = NSSwitch()
     private let updateSwitch = NSSwitch()
@@ -345,27 +344,6 @@ class PreferencesView: NSView {
 
         y += rowHeight
 
-        // ── Memory ──
-        y += sectionGap - rowHeight
-        y = addSectionHeader("Memory", y: y)
-
-
-        addLabel("AI Memory", y: y)
-
-        memorySwitch.state = settings.memoryEnabled ? .on : .off
-        memorySwitch.target = self
-        memorySwitch.action = #selector(memoryChanged(_:))
-        memorySwitch.frame = NSRect(x: controlX, y: y + 2, width: 38, height: 22)
-        addSubview(memorySwitch)
-
-        let memoryHint = NSTextField(labelWithString: "Auto-captures task summaries, writes .flock-context.md")
-        memoryHint.font = NSFont.systemFont(ofSize: 10, weight: .regular)
-        memoryHint.textColor = Theme.textTertiary
-        memoryHint.frame = NSRect(x: controlX + 48, y: y + 5, width: 240, height: 14)
-        addSubview(memoryHint)
-
-        y += rowHeight
-
         // Wren Compression
 
         addLabel("Wren Compression", y: y)
@@ -490,10 +468,6 @@ class PreferencesView: NSView {
 
     @objc private func updateChanged(_ sender: NSSwitch) {
         Settings.shared.autoCheckUpdates = (sender.state == .on)
-    }
-
-    @objc private func memoryChanged(_ sender: NSSwitch) {
-        Settings.shared.memoryEnabled = (sender.state == .on)
     }
 
     @objc private func wrenChanged(_ sender: NSSwitch) {

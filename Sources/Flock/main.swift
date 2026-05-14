@@ -6,7 +6,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var mainWindow: FlockWindow!
     var paneManager: PaneManager!
     lazy var commandPalette = CommandPalette()
-    let memorySidebar = MemorySidebar()
     var hotkeyManager: GlobalHotkeyManager?
     private var clickMonitor: Any?
     private var focusObserver: Any?
@@ -44,11 +43,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let self, let window = self.mainWindow else { return }
                 WelcomeCard.showIfNeeded(in: window)
             }
-        }
-
-        // Mark stale in-progress tasks as interrupted (restore happens in TaskStore.init)
-        for task in TaskStore.shared.inProgress {
-            TaskStore.shared.markFailed(task, error: "Interrupted by app restart")
         }
 
         // Usage tracker
@@ -122,9 +116,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         paneManager.saveSession()
         paneManager.panes.forEach { $0.shutdown() }
-        AgentRunner.shared.cancelAll()
-        TaskStore.shared.save()
-        MemoryStore.shared.save()
         return .terminateNow
     }
 
@@ -202,20 +193,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         paneManager.showGlobalFind()
     }
 
-    @objc func toggleAgentMode(_ sender: Any?) {
-        paneManager.toggleAgentMode()
-    }
-
     @objc func splitHorizontal(_ sender: Any?) {
         paneManager.splitActivePane(direction: .horizontal)
     }
 
     @objc func splitVertical(_ sender: Any?) {
         paneManager.splitActivePane(direction: .vertical)
-    }
-
-    @objc func toggleMemory(_ sender: Any?) {
-        memorySidebar.toggle(in: mainWindow)
     }
 
     @objc func toggleChangeLog(_ sender: Any?) {
@@ -294,10 +277,6 @@ func buildMainMenu(target: AppDelegate) -> NSMenu {
             key: "k", target: target)
     addItem(viewMenu, "Toggle Broadcast", #selector(AppDelegate.toggleBroadcast(_:)),
             key: "b", mods: [.command, .shift], target: target)
-    addItem(viewMenu, "Toggle Agent Mode", #selector(AppDelegate.toggleAgentMode(_:)),
-            key: "a", mods: [.command, .shift], target: target)
-    addItem(viewMenu, "Toggle Memory", #selector(AppDelegate.toggleMemory(_:)),
-            key: "m", mods: [.command, .shift], target: target)
     addItem(viewMenu, "Toggle Change Log", #selector(AppDelegate.toggleChangeLog(_:)),
             key: "l", mods: [.command, .shift], target: target)
     addItem(viewMenu, "Toggle Usage Stats", #selector(AppDelegate.toggleCostStats(_:)),

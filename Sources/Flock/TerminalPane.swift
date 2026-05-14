@@ -21,7 +21,9 @@ class TerminalPane: FlockPane, LocalProcessTerminalViewDelegate {
     private var sessionOutputTokens: Int = 0
     private var sessionCacheReadTokens: Int = 0
     private var sessionCacheCreateTokens: Int = 0
-    private var lastCostLineCount: Int = 0
+    private var lastCostByteOffset: UInt64 = 0
+    private var costLineCarry: String = ""  // trailing partial line from previous read
+    private var isRefreshingCost: Bool = false
     private var costUpdateTimer: Timer?
     private var costStatsView: CostStatsView?
     private(set) var isCostStatsVisible: Bool = false
@@ -103,11 +105,6 @@ class TerminalPane: FlockPane, LocalProcessTerminalViewDelegate {
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
                 guard let self else { return }
-                // Write context file only for new sessions (not resume) to avoid
-                // triggering file-change permission prompts in Claude
-                if !self.shouldResume, let dir = self.contextDirectory, Settings.shared.memoryEnabled {
-                    MemoryStore.shared.writeContextFile(to: dir)
-                }
                 if self.shouldResume {
                     if let sid = self.resumeSessionId, sid != "resume" {
                         // Resume exact conversation by session ID
@@ -132,10 +129,6 @@ class TerminalPane: FlockPane, LocalProcessTerminalViewDelegate {
         // Listen for changes
         NotificationCenter.default.addObserver(self, selector: #selector(settingsChanged(_:)),
                                                name: Settings.didChange, object: nil)
-        if type == .claude {
-            NotificationCenter.default.addObserver(self, selector: #selector(memoryDidChange),
-                                                   name: MemoryStore.didChange, object: nil)
-        }
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -150,18 +143,7 @@ class TerminalPane: FlockPane, LocalProcessTerminalViewDelegate {
         guard let key = note.userInfo?["key"] as? String else { return }
         if key == "fontSize" {
             terminalView.font = NSFont.monospacedSystemFont(ofSize: Settings.shared.fontSize, weight: .regular)
-        } else if key == "memoryEnabled", let dir = contextDirectory {
-            if Settings.shared.memoryEnabled {
-                MemoryStore.shared.writeContextFile(to: dir)
-            } else {
-                MemoryStore.shared.removeContextFile(from: dir)
-            }
         }
-    }
-
-    @objc private func memoryDidChange() {
-        guard let dir = contextDirectory, Settings.shared.memoryEnabled else { return }
-        MemoryStore.shared.writeContextFile(to: dir)
     }
 
     // MARK: - Theme (subclass hook)
@@ -226,19 +208,23 @@ class TerminalPane: FlockPane, LocalProcessTerminalViewDelegate {
     }
 
     /// Reads the session JSONL file and computes cost for this session only.
+    /// Seeks to the byte offset of the last read and only parses new bytes — the
+    /// JSONL file grows unbounded over a session (tens of MB), so loading the
+    /// whole file each refresh caused OOM kills after ~15-20 minutes.
     private func refreshSessionCost() {
         guard let sid = resumeSessionId, !sid.isEmpty, sid != "resume",
               let dir = contextDirectory ?? processWorkingDirectory() else { return }
+        guard !isRefreshingCost else { return }
+        isRefreshingCost = true
 
         let encoded = dir.replacingOccurrences(of: "/", with: "-")
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         let filePath = "\(home)/.claude/projects/\(encoded)/\(sid).jsonl"
+        let startOffset = lastCostByteOffset
+        let carry = costLineCarry
 
-        // Read on background thread
         DispatchQueue.global(qos: .utility).async { [weak self] in
-            guard let self,
-                  let data = FileManager.default.contents(atPath: filePath),
-                  let content = String(data: data, encoding: .utf8) else { return }
+            guard let self else { return }
 
             var cost: Double = 0
             var tokens: Int = 0
@@ -246,39 +232,72 @@ class TerminalPane: FlockPane, LocalProcessTerminalViewDelegate {
             var outputTok: Int = 0
             var cacheReadTok: Int = 0
             var cacheCreateTok: Int = 0
-            let lines = content.split(separator: "\n")
+            var newOffset: UInt64 = startOffset
+            var newCarry: String = carry
 
-            // Only parse new lines since last check
-            let startLine = self.lastCostLineCount
-            guard lines.count > startLine else { return }
+            autoreleasepool {
+                guard let handle = try? FileHandle(forReadingFrom: URL(fileURLWithPath: filePath)) else { return }
+                defer { try? handle.close() }
 
-            for i in startLine..<lines.count {
-                let line = lines[i]
-                guard line.contains("\"type\":\"assistant\"") || line.contains("\"type\": \"assistant\"") else { continue }
+                let fileSize = (try? handle.seekToEnd()) ?? 0
+                if fileSize < startOffset {
+                    // File rotated/truncated — reset
+                    newOffset = 0
+                    newCarry = ""
+                } else if fileSize == startOffset {
+                    return
+                }
 
-                guard let lineData = line.data(using: .utf8),
-                      let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
-                      json["type"] as? String == "assistant",
-                      let message = json["message"] as? [String: Any],
-                      let usage = message["usage"] as? [String: Any] else { continue }
+                do {
+                    try handle.seek(toOffset: newOffset)
+                } catch {
+                    return
+                }
 
-                let input = usage["input_tokens"] as? Int ?? 0
-                let output = usage["output_tokens"] as? Int ?? 0
-                let cacheRead = usage["cache_read_input_tokens"] as? Int ?? 0
-                let cacheCreate = usage["cache_creation_input_tokens"] as? Int ?? 0
-                let model = message["model"] as? String ?? ""
+                let data = (try? handle.readToEnd()) ?? Data()
+                newOffset = fileSize
+                guard !data.isEmpty, let chunk = String(data: data, encoding: .utf8) else { return }
 
-                tokens += input + output
-                inputTok += input
-                outputTok += output
-                cacheReadTok += cacheRead
-                cacheCreateTok += cacheCreate
-                let p = Self.costPricing[model] ?? Self.defaultCostPricing
-                let baseInput = max(0, input - cacheRead - cacheCreate)
-                cost += Double(baseInput) / 1_000_000 * p.input
-                     + Double(output) / 1_000_000 * p.output
-                     + Double(cacheRead) / 1_000_000 * p.cacheRead
-                     + Double(cacheCreate) / 1_000_000 * p.cacheCreate
+                let combined = newCarry + chunk
+                // Keep anything after the last newline as carry for next refresh
+                var body: Substring
+                if let lastNL = combined.lastIndex(of: "\n") {
+                    body = combined[..<lastNL]
+                    newCarry = String(combined[combined.index(after: lastNL)...])
+                } else {
+                    // No newline yet — buffer the whole thing, bounded
+                    body = Substring()
+                    newCarry = combined.count > 65_536 ? String(combined.suffix(32_768)) : combined
+                }
+
+                for line in body.split(separator: "\n", omittingEmptySubsequences: true) {
+                    autoreleasepool {
+                        guard line.contains("\"type\":\"assistant\"") || line.contains("\"type\": \"assistant\"") else { return }
+                        guard let lineData = line.data(using: .utf8),
+                              let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
+                              json["type"] as? String == "assistant",
+                              let message = json["message"] as? [String: Any],
+                              let usage = message["usage"] as? [String: Any] else { return }
+
+                        let input = usage["input_tokens"] as? Int ?? 0
+                        let output = usage["output_tokens"] as? Int ?? 0
+                        let cacheRead = usage["cache_read_input_tokens"] as? Int ?? 0
+                        let cacheCreate = usage["cache_creation_input_tokens"] as? Int ?? 0
+                        let model = message["model"] as? String ?? ""
+
+                        tokens += input + output
+                        inputTok += input
+                        outputTok += output
+                        cacheReadTok += cacheRead
+                        cacheCreateTok += cacheCreate
+                        let p = Self.costPricing[model] ?? Self.defaultCostPricing
+                        let baseInput = max(0, input - cacheRead - cacheCreate)
+                        cost += Double(baseInput) / 1_000_000 * p.input
+                             + Double(output) / 1_000_000 * p.output
+                             + Double(cacheRead) / 1_000_000 * p.cacheRead
+                             + Double(cacheCreate) / 1_000_000 * p.cacheCreate
+                    }
+                }
             }
 
             DispatchQueue.main.async { [weak self] in
@@ -289,7 +308,9 @@ class TerminalPane: FlockPane, LocalProcessTerminalViewDelegate {
                 self.sessionOutputTokens += outputTok
                 self.sessionCacheReadTokens += cacheReadTok
                 self.sessionCacheCreateTokens += cacheCreateTok
-                self.lastCostLineCount = lines.count
+                self.lastCostByteOffset = newOffset
+                self.costLineCarry = newCarry
+                self.isRefreshingCost = false
                 self.updateCostLabel()
                 self.updateCostStatsIfVisible()
             }

@@ -900,7 +900,6 @@
     <div class="sidebar-group">
       <div class="sidebar-group-label">core</div>
       <a href="#panes" class="sidebar-link">Pane Management</a>
-      <a href="#agent-mode" class="sidebar-link">Agent Mode</a>
       <a href="#command-palette" class="sidebar-link">Command Palette</a>
       <a href="#broadcast" class="sidebar-link">Broadcast Mode</a>
     </div>
@@ -913,7 +912,6 @@
     <div class="sidebar-group">
       <div class="sidebar-group-label">features</div>
       <a href="#session-restore" class="sidebar-link">Session Restore</a>
-      <a href="#memory" class="sidebar-link">Memory System</a>
       <a href="#notifications" class="sidebar-link">Notifications</a>
       <a href="#global-hotkey" class="sidebar-link">Global Hotkey</a>
     </div>
@@ -1085,170 +1083,6 @@
 
       <div class="dither"></div>
 
-      <!-- ==================== AGENT MODE ==================== -->
-      <section class="doc-section reveal" id="agent-mode">
-        <div class="section-label">// core feature</div>
-        <div class="section-title">agent mode</div>
-        <div class="section-intro">a built-in task queue with real-time execution monitoring for managing multiple agents.</div>
-
-        <div class="prose">
-          <p>Press <code>&#8984;&#8679;A</code> to toggle agent mode. The terminal grid is replaced with a three-panel view for creating, monitoring, and interacting with agent tasks.</p>
-
-          <h3>The Three-Panel Layout</h3>
-        </div>
-
-        <!-- Agent mode layout diagram -->
-        <div style="margin:1.5rem 0;border:3px solid var(--ink);background:var(--bg-alt);overflow:hidden;">
-          <div style="display:grid;grid-template-columns:160px 1fr 35%;min-height:200px;">
-            <!-- Sidebar panel -->
-            <div style="border-right:1px solid var(--border);padding:10px;background:var(--bg);">
-              <div style="font-family:'Press Start 2P',cursive;font-size:0.22rem;letter-spacing:0.1em;color:var(--accent);margin-bottom:8px;text-transform:uppercase;">+ New Agent</div>
-              <div style="border:1px dashed var(--border);padding:4px 6px;margin-bottom:10px;font-family:'VT323',monospace;font-size:0.8rem;color:var(--ink-faint);">type a task...</div>
-
-              <div style="font-family:'Press Start 2P',cursive;font-size:0.2rem;letter-spacing:0.08em;color:var(--ink-faint);margin-bottom:4px;text-transform:uppercase;">Running</div>
-              <div style="padding:3px 6px;margin-bottom:2px;font-family:'VT323',monospace;font-size:0.78rem;background:var(--bg-warm);border-radius:3px;display:flex;align-items:center;gap:4px;">
-                <span style="width:5px;height:5px;border-radius:50%;background:var(--accent);"></span>refactor auth
-              </div>
-
-              <div style="font-family:'Press Start 2P',cursive;font-size:0.2rem;letter-spacing:0.08em;color:var(--ink-faint);margin:8px 0 4px;text-transform:uppercase;">Queued</div>
-              <div style="padding:3px 6px;margin-bottom:2px;font-family:'VT323',monospace;font-size:0.78rem;display:flex;align-items:center;gap:4px;">
-                <span style="width:5px;height:5px;border-radius:50%;border:1px solid var(--ink-faint);"></span>add search
-              </div>
-              <div style="padding:3px 6px;margin-bottom:2px;font-family:'VT323',monospace;font-size:0.78rem;display:flex;align-items:center;gap:4px;">
-                <span style="width:5px;height:5px;border-radius:50%;border:1px solid var(--ink-faint);"></span>write tests
-              </div>
-
-              <div style="font-family:'Press Start 2P',cursive;font-size:0.2rem;letter-spacing:0.08em;color:var(--ink-faint);margin:8px 0 4px;text-transform:uppercase;">Done</div>
-              <div style="padding:3px 6px;font-family:'VT323',monospace;font-size:0.78rem;display:flex;align-items:center;gap:4px;">
-                <span style="width:5px;height:5px;border-radius:50%;background:var(--green);"></span>fix navbar
-              </div>
-            </div>
-
-            <!-- Conversation panel -->
-            <div style="border-right:1px solid var(--border);padding:10px;display:flex;flex-direction:column;">
-              <div style="font-family:'Silkscreen',cursive;font-size:0.6rem;font-weight:700;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                <span style="width:6px;height:6px;border-radius:50%;background:var(--accent);"></span>refactor auth
-                <span style="font-family:'VT323',monospace;font-size:0.85rem;color:var(--ink-faint);font-weight:400;margin-left:auto;">1m 23s</span>
-              </div>
-              <div style="flex:1;display:flex;flex-direction:column;gap:4px;">
-                <div style="display:flex;align-items:center;gap:6px;font-family:'VT323',monospace;font-size:0.8rem;color:var(--ink-soft);">
-                  <span style="font-family:'Menlo',monospace;font-size:9px;font-weight:700;color:var(--ink-faint);border:1px solid var(--ink-faint);width:16px;height:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">...</span>
-                  analyzing project structure
-                </div>
-                <div style="display:flex;align-items:center;gap:6px;font-family:'VT323',monospace;font-size:0.8rem;color:var(--ink-soft);">
-                  <span style="font-family:'Menlo',monospace;font-size:9px;font-weight:700;color:var(--blue);border:1px solid var(--blue);width:16px;height:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">R</span>
-                  src/auth/index.ts
-                </div>
-                <div style="display:flex;align-items:center;gap:6px;font-family:'VT323',monospace;font-size:0.8rem;color:var(--ink-soft);">
-                  <span style="font-family:'Menlo',monospace;font-size:9px;font-weight:700;color:var(--green);border:1px solid var(--green);width:16px;height:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">E</span>
-                  src/auth/jwt.ts
-                </div>
-                <div style="display:flex;align-items:center;gap:6px;font-family:'VT323',monospace;font-size:0.8rem;color:var(--ink);">
-                  <span style="font-family:'Menlo',monospace;font-size:9px;font-weight:700;color:var(--accent);border:1px solid var(--accent);width:16px;height:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">$</span>
-                  <strong>npm run test</strong>
-                </div>
-              </div>
-              <div style="border-top:1px solid var(--border);padding-top:6px;display:flex;align-items:center;gap:6px;margin-top:4px;">
-                <span style="font-family:'VT323',monospace;font-size:0.8rem;color:var(--ink-faint);">4 actions</span>
-                <span style="font-family:'VT323',monospace;font-size:0.8rem;color:var(--ink-faint);margin-left:auto;">$0.08</span>
-              </div>
-            </div>
-
-            <!-- Detail panel -->
-            <div style="padding:10px;">
-              <div style="display:flex;gap:0;margin-bottom:8px;">
-                <div style="font-family:'Press Start 2P',cursive;font-size:0.2rem;letter-spacing:0.08em;color:var(--ink);padding:4px 8px;border-bottom:2px solid var(--accent);">PLAN</div>
-                <div style="font-family:'Press Start 2P',cursive;font-size:0.2rem;letter-spacing:0.08em;color:var(--ink-faint);padding:4px 8px;">CHANGES</div>
-              </div>
-              <div style="display:flex;flex-direction:column;gap:4px;">
-                <div style="display:flex;align-items:center;gap:6px;font-family:'VT323',monospace;font-size:0.8rem;color:var(--ink-faint);">
-                  <span style="color:var(--ink-faint);">&#10003;</span> Analyzing...
-                </div>
-                <div style="display:flex;align-items:center;gap:6px;font-family:'VT323',monospace;font-size:0.8rem;color:var(--ink-faint);">
-                  <span style="color:var(--ink-faint);">&#10003;</span> Read src/auth/index.ts
-                </div>
-                <div style="display:flex;align-items:center;gap:6px;font-family:'VT323',monospace;font-size:0.8rem;color:var(--ink-faint);">
-                  <span style="color:var(--ink-faint);">&#10003;</span> Edit src/auth/jwt.ts
-                </div>
-                <div style="display:flex;align-items:center;gap:6px;font-family:'VT323',monospace;font-size:0.8rem;color:var(--ink);">
-                  <span style="color:var(--blue);">&#8226;</span> <strong>npm run test</strong>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="prose">
-          <h3>Sidebar (Left)</h3>
-          <p>The sidebar is a task list grouped by status: <strong>Running</strong>, <strong>Queued</strong>, and <strong>Done</strong>. Click "+ New Agent" to create a task -- type a description and press Enter. That description becomes the prompt sent to Claude Code.</p>
-          <p>Click any task to select it and view its details in the other two panels. Right-click for context actions:</p>
-          <ul>
-            <li><strong>Queued tasks:</strong> Start Now, Delete</li>
-            <li><strong>Running tasks:</strong> Cancel (or Finish if waiting for input)</li>
-            <li><strong>Done/Failed tasks:</strong> Retry, Delete</li>
-          </ul>
-
-          <h3>Conversation Timeline (Center)</h3>
-          <p>A real-time event log of every action the agent takes. As Claude Code works, each tool use and thinking block appears as a row with a colored badge, title, and timestamp. Only one action is "active" at a time, shown with a blue left bar and bold title.</p>
-          <p>When a task finishes but has a session, it enters a "waiting for input" state. A message input field appears at the bottom so you can send follow-up prompts -- Flock resumes the conversation using Claude Code's <code>--resume</code> flag.</p>
-
-          <h3>Detail Panel (Right)</h3>
-          <p>Two tabs:</p>
-          <ul>
-            <li><strong>Plan</strong> -- a checklist of all actions with status indicators (&#10003; done, &#8226; active, &#9675; pending). Consecutive thinking blocks are grouped as "Analyzing..."</li>
-            <li><strong>Changes</strong> -- every file the agent touched, with a badge showing the operation (Read, Edit, Write)</li>
-          </ul>
-        </div>
-
-        <div class="prose">
-          <h3>Automatic Scheduling</h3>
-          <p>You don't manually assign tasks to agents. Flock's runner automatically picks up the next queued task whenever capacity allows, up to <code>maxParallelAgents</code> (default: 3) running concurrently. When one finishes, the next in the queue starts immediately.</p>
-
-          <h3>Event Types</h3>
-          <p>Flock parses Claude Code's stream-json output and maps each event to a badge in the timeline:</p>
-        </div>
-
-        <div class="timeline">
-          <div class="timeline-event">
-            <span class="timeline-badge think">...</span>
-            <span class="timeline-text"><strong>Think</strong> -- agent reasoning</span>
-          </div>
-          <div class="timeline-event">
-            <span class="timeline-badge read">R</span>
-            <span class="timeline-text"><strong>Read</strong> -- reading files</span>
-          </div>
-          <div class="timeline-event">
-            <span class="timeline-badge edit">E</span>
-            <span class="timeline-text"><strong>Edit</strong> -- modifying existing files</span>
-          </div>
-          <div class="timeline-event">
-            <span class="timeline-badge write">W</span>
-            <span class="timeline-text"><strong>Write</strong> -- creating new files</span>
-          </div>
-          <div class="timeline-event">
-            <span class="timeline-badge bash">$</span>
-            <span class="timeline-text"><strong>Bash</strong> -- running shell commands</span>
-          </div>
-          <div class="timeline-event">
-            <span class="timeline-badge search">?</span>
-            <span class="timeline-text"><strong>Search</strong> -- web searches</span>
-          </div>
-        </div>
-
-        <div class="prose">
-          <h3>Stream-JSON Protocol</h3>
-          <p>Under the hood, Flock launches Claude Code with <code>--output-format stream-json</code>. Each line of output is a JSON event (thinking, tool_use, tool_result, result). The <code>StreamJsonParser</code> buffers incoming data, splits on newlines, and emits typed events that become timeline entries.</p>
-
-          <h3>Cost Tracking</h3>
-          <p>Each task accumulates cost across conversation rounds. The total USD cost appears in the conversation footer and in the sidebar subtitle for completed tasks. Enable the usage tracker in Preferences for aggregate stats.</p>
-
-          <h3>Persistence</h3>
-          <p>Tasks are saved to <code>~/Library/Application Support/Flock/tasks.json</code>. They survive app restarts. If Flock quits while a task is running, it's automatically marked as failed on next launch.</p>
-        </div>
-      </section>
-
-      <div class="dither-accent"></div>
-
       <!-- ==================== COMMAND PALETTE ==================== -->
       <section class="doc-section reveal" id="command-palette">
         <div class="section-label">// core feature</div>
@@ -1277,8 +1111,6 @@
             <li>Find in Terminal</li>
             <li>Find in All Panes</li>
             <li>Toggle Broadcast</li>
-            <li>Toggle Agent Mode</li>
-            <li>Toggle Memory</li>
             <li>Preferences</li>
           </ul>
 
@@ -1293,14 +1125,6 @@
           <h4>Appearance</h4>
           <ul>
             <li>Switch to any of the 7 built-in themes</li>
-          </ul>
-
-          <h4>Memory</h4>
-          <ul>
-            <li>Toggle Memory sidebar</li>
-            <li>Add Memory entry</li>
-            <li>Clear All Memories</li>
-            <li>Toggle Memory Feature on/off</li>
           </ul>
         </div>
       </section>
@@ -1344,9 +1168,7 @@
           <div class="keycap"><kbd>&#8984;K</kbd><span>palette</span></div>
           <div class="keycap"><kbd>&#8984;D</kbd><span>split h</span></div>
           <div class="keycap"><kbd>&#8984;&#8679;D</kbd><span>split v</span></div>
-          <div class="keycap"><kbd>&#8984;&#8679;A</kbd><span>agents</span></div>
           <div class="keycap"><kbd>&#8984;&#8679;B</kbd><span>broadcast</span></div>
-          <div class="keycap"><kbd>&#8984;&#8679;M</kbd><span>memory</span></div>
           <div class="keycap"><kbd>&#8984;F</kbd><span>find</span></div>
           <div class="keycap"><kbd>&#8984;&#8679;F</kbd><span>find all</span></div>
         </div>
@@ -1368,9 +1190,7 @@
             <tr><td>&#8984;D</td><td>Split pane horizontally</td></tr>
             <tr><td>&#8984;&#8679;D</td><td>Split pane vertically</td></tr>
             <tr><td>&#8984;K</td><td>Open command palette</td></tr>
-            <tr><td>&#8984;&#8679;A</td><td>Toggle agent mode</td></tr>
             <tr><td>&#8984;&#8679;B</td><td>Toggle broadcast mode</td></tr>
-            <tr><td>&#8984;&#8679;M</td><td>Toggle memory sidebar</td></tr>
             <tr><td>&#8984;F</td><td>Find in current pane</td></tr>
             <tr><td>&#8984;G</td><td>Find next match</td></tr>
             <tr><td>&#8984;&#8679;G</td><td>Find previous match</td></tr>
@@ -1577,33 +1397,10 @@
 
           <p>Session data is stored in <code>~/Library/Application Support/Flock/session.json</code>.</p>
 
-          <h3>Crash Recovery</h3>
-          <p>If Flock quits unexpectedly, any in-progress agent tasks are automatically marked as failed so you know exactly what didn't finish.</p>
         </div>
       </section>
 
       <div class="dither-accent"></div>
-
-      <!-- ==================== MEMORY SYSTEM ==================== -->
-      <section class="doc-section reveal" id="memory">
-        <div class="section-label">// feature</div>
-        <div class="section-title">memory system</div>
-        <div class="section-intro">persistent context across sessions.</div>
-
-        <div class="prose">
-          <p>Press <code>&#8984;&#8679;M</code> to open the memory sidebar. This is a persistent store of context that carries across sessions -- agent instructions, project notes, anything you want your Claudes to remember.</p>
-
-          <h3>How It Works</h3>
-          <ul>
-            <li>Add memories manually from the sidebar or command palette</li>
-            <li>Memories persist in <code>~/Library/Application Support/Flock/memories.json</code></li>
-            <li>Toggle the entire memory feature on/off in Preferences</li>
-            <li>Clear all memories from the command palette when you want a fresh start</li>
-          </ul>
-        </div>
-      </section>
-
-      <div class="dither"></div>
 
       <!-- ==================== NOTIFICATIONS ==================== -->
       <section class="doc-section reveal" id="notifications">
@@ -1612,7 +1409,7 @@
         <div class="section-intro">go get coffee. flock taps you on the shoulder.</div>
 
         <div class="prose">
-          <p>When an agent finishes a task and Flock isn't in the foreground, you get a native macOS notification. Click it to jump straight to that pane.</p>
+          <p>When a long-running task finishes and Flock isn't in the foreground, you get a native macOS notification. Click it to jump straight to that pane.</p>
           <p>Notifications respect your macOS notification preferences (Do Not Disturb, etc.). No special setup required.</p>
         </div>
       </section>
@@ -1660,8 +1457,6 @@
             <tr><td>globalHotkeyEnabled</td><td>System-wide hotkey</td><td>true</td></tr>
             <tr><td>globalHotkeyKeyCode</td><td>Hotkey key code</td><td>50 (`)</td></tr>
             <tr><td>globalHotkeyModifiers</td><td>Hotkey modifier flags</td><td>control</td></tr>
-            <tr><td>maxParallelAgents</td><td>Max concurrent agent tasks</td><td>3</td></tr>
-            <tr><td>memoryEnabled</td><td>Enable memory persistence</td><td>true</td></tr>
             <tr><td>showUsageTracker</td><td>Show token/cost tracking</td><td>false</td></tr>
             <tr><td>autoCheckUpdates</td><td>Check for updates on launch</td><td>true</td></tr>
           </tbody>
@@ -1682,14 +1477,8 @@
             <div class="code-block-dot"></div>
             <span class="code-block-label">paths</span>
           </div>
-          <pre><span class="comment"># Task history &amp; kanban state</span>
-~/Library/Application Support/Flock/tasks.json
-
-<span class="comment"># Session layout for restore</span>
+          <pre><span class="comment"># Session layout for restore</span>
 ~/Library/Application Support/Flock/session.json
-
-<span class="comment"># Memory entries</span>
-~/Library/Application Support/Flock/memory.json
 
 <span class="comment"># Preferences</span>
 defaults read com.baa.flock</pre>

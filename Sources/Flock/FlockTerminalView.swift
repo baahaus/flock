@@ -97,6 +97,9 @@ class FlockTerminalView: LocalProcessTerminalView {
                   termPane !== owningPane else { continue }
             // Verify running at point of use; SIGPIPE ignored globally for safety
             guard termPane.terminalView.process.running else { continue }
+            // Skip Claude panes that are showing a confirmation prompt — a stray
+            // Enter from another pane could auto-accept "trust this folder" etc.
+            if termPane.paneType == .claude, termPane.agentState == .waiting { continue }
             termPane.terminalView.process.send(data: data)
         }
     }

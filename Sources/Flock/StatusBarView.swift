@@ -48,8 +48,6 @@ class StatusBarView: NSView {
 
         NotificationCenter.default.addObserver(self, selector: #selector(themeChanged),
                                                name: Theme.themeDidChange, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(taskStoreChanged),
-                                               name: TaskStore.didChange, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(usageUpdated),
                                                name: UsageTracker.didUpdate, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(settingsChanged),
@@ -61,7 +59,6 @@ class StatusBarView: NSView {
         NotificationCenter.default.removeObserver(self)
     }
 
-    @objc private func taskStoreChanged() { update() }
     @objc private func usageUpdated() { updateUsage() }
     @objc private func settingsChanged(_ note: Notification) {
         guard let key = note.userInfo?["key"] as? String, key == "showUsageTracker" else { return }
@@ -89,16 +86,8 @@ class StatusBarView: NSView {
     func update() {
         guard let mgr = paneManager else { return }
 
-        let newText: String
-        if mgr.isAgentMode {
-            let running = AgentRunner.shared.activeCount
-            let queued = TaskStore.shared.backlog.count
-            let done = TaskStore.shared.done.count
-            newText = "\(running) running  \(queued) queued  \(done) done"
-        } else {
-            let n = mgr.panes.count
-            newText = n == 0 ? "\u{2318}T for a new pane" : n == 1 ? "1 session" : "\(n) sessions"
-        }
+        let n = mgr.panes.count
+        let newText = n == 0 ? "\u{2318}T for a new pane" : n == 1 ? "1 session" : "\(n) sessions"
 
         if newText != lastText && !lastText.isEmpty {
             // Cancel any in-flight animation by setting immediately, then animate

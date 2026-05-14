@@ -159,9 +159,6 @@ class CommandPalette {
             CommandAction(name: "Find in All Panes", shortcut: "⌘⇧F", category: "View") { [weak self] in
                 self?.paneManager?.showGlobalFind()
             },
-            CommandAction(name: "Toggle Agent Mode", shortcut: "⌘⇧A", category: "View") { [weak self] in
-                self?.paneManager?.toggleAgentMode()
-            },
             CommandAction(name: "Split Horizontal", shortcut: "⌘D", category: "Panes") { [weak self] in
                 self?.paneManager?.splitActivePane(direction: .horizontal)
             },
@@ -208,30 +205,6 @@ class CommandPalette {
                 let idx = mgr.activePaneIndex
                 guard idx >= 0, idx < mgr.panes.count else { return }
                 (mgr.panes[idx] as? TerminalPane)?.toggleCostStats()
-            },
-            CommandAction(name: "Toggle Memory", shortcut: "⌘⇧M", category: "View") { [weak self] in
-                guard let win = self?.window else { return }
-                (NSApp.delegate as? AppDelegate)?.memorySidebar.toggle(in: win)
-            },
-            CommandAction(name: "Add Memory", shortcut: "", category: "Memory") { [weak self] in
-                guard let win = self?.window else { return }
-                // Show sidebar then trigger add
-                let sidebar = (NSApp.delegate as? AppDelegate)?.memorySidebar
-                if !(sidebar?.isVisible ?? false) { sidebar?.show(in: win) }
-            },
-            CommandAction(name: "Clear All Memories", shortcut: "", category: "Memory") {
-                let alert = NSAlert()
-                alert.messageText = "Clear All Memories"
-                alert.informativeText = "Remove all memories? This cannot be undone."
-                alert.alertStyle = .warning
-                alert.addButton(withTitle: "Clear")
-                alert.addButton(withTitle: "Cancel")
-                if alert.runModal() == .alertFirstButtonReturn {
-                    MemoryStore.shared.removeAll()
-                }
-            },
-            CommandAction(name: "Toggle Memory Feature", shortcut: "", category: "Memory") {
-                Settings.shared.memoryEnabled.toggle()
             },
         ] + Themes.all.map { theme in
             CommandAction(name: "Theme: \(theme.name)", shortcut: "", category: "Appearance") {

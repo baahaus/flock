@@ -48,6 +48,34 @@ enum AgentState: String {
     }
 }
 
+// MARK: - AgentActionType
+
+enum AgentActionType: String, Codable {
+    case think
+    case read
+    case edit
+    case write
+    case bash
+    case search
+    case agent
+    case web
+    case message
+
+    var badge: String {
+        switch self {
+        case .think:   return "..."
+        case .read:    return "R"
+        case .edit:    return "E"
+        case .write:   return "W"
+        case .bash:    return "$"
+        case .search:  return "?"
+        case .agent:   return "A"
+        case .web:     return "W"
+        case .message: return ">"
+        }
+    }
+}
+
 // MARK: - ClaudeOutputParser
 
 /// Detects agent state from raw terminal output.
@@ -67,6 +95,7 @@ final class ClaudeOutputParser {
 
     private(set) var state: AgentState = .idle
     private(set) var actions: [ActionEntry] = []
+    private let maxRetainedActions = 500
     var onStateChange: ((AgentState) -> Void)?
     var onAction: ((ActionEntry) -> Void)?
     var onTrustPrompt: (() -> Void)?
@@ -122,6 +151,9 @@ final class ClaudeOutputParser {
 
             let entry = ActionEntry(type: type, target: target, timestamp: Date())
             actions.append(entry)
+            if actions.count > maxRetainedActions {
+                actions.removeFirst(actions.count - maxRetainedActions)
+            }
             let e = entry
             DispatchQueue.main.async { [weak self] in
                 self?.onAction?(e)

@@ -41,15 +41,9 @@ flock has three kinds of panes. they tile themselves automatically -- 1 fills th
 - **shell panes** are regular terminals with autosuggestions baked in.
 - **markdown panes** let you open or create `.md` files, edit them directly, and autosave back to disk. external changes are detected and you get a clean conflict resolution dialog.
 
-### agent mode
-
-hit `⌘⇧A` and flock becomes a task manager. throw tasks at a queue, watch them flow across a kanban board (backlog, in progress, done, failed). each agent gets a live timeline showing every action in real time. run up to 3 agents in parallel (configurable). tasks persist across sessions. costs are tracked per task.
-
-you can send follow-up messages to running agents, resume completed conversations, or cancel anything mid-flight.
-
 ### command palette
 
-`⌘K` opens everything. new panes, markdown files, themes, layouts, broadcast mode, memory management, pane navigation. fuzzy search, keyboard-driven. if you've used raycast or arc you already know how this works.
+`⌘K` opens everything. new panes, markdown files, themes, layouts, broadcast mode, pane navigation. fuzzy search, keyboard-driven. if you've used raycast or arc you already know how this works.
 
 ### broadcast mode
 
@@ -59,13 +53,9 @@ you can send follow-up messages to running agents, resume completed conversation
 
 `⌘F` searches inside the current terminal pane with live highlighting and prev/next navigation. `⌘⇧F` opens global find that searches across every open pane simultaneously -- terminals and markdown -- with results showing match counts per pane.
 
-### memory
-
-flock has a built-in memory system (`⌘⇧M`) that captures task summaries and lets you add, edit, pin, and delete memories. pinned memories survive auto-trimming. everything syncs to a `.flock-context.md` file in your working directory so claude has persistent context across sessions.
-
 ### wren compression
 
-toggle on prompt compression in preferences and flock runs your messages through [wren](https://github.com/baahaus/wren) before sending. compresses prompts 50-80%, preserving meaning while saving tokens. works on paste in terminal panes and message input in agent mode.
+toggle on prompt compression in preferences and flock runs your messages through [wren](https://github.com/baahaus/wren) before sending. compresses prompts 50-80%, preserving meaning while saving tokens. works on paste in terminal panes.
 
 ### usage tracking
 
@@ -83,7 +73,7 @@ close the app, open it later, everything's still there. your layout, your panes,
 
 ### notifications & sounds
 
-flock taps you on the shoulder when an agent finishes something. native macOS notifications with optional sound effects. long-running commands (>10s) trigger a notification automatically so you can go get coffee.
+flock taps you on the shoulder when a session finishes something. native macOS notifications with optional sound effects. long-running commands (>10s) trigger a notification automatically so you can go get coffee.
 
 ### global hotkey
 
@@ -110,9 +100,7 @@ flock is keyboard-first. your hands never leave the keys.
 | `⌘D` | split horizontal |
 | `⌘⇧D` | split vertical |
 | `⌘K` | command palette |
-| `⌘⇧A` | agent mode |
 | `⌘⇧B` | broadcast mode |
-| `⌘⇧M` | memory panel |
 | `⌘⇧L` | change log overlay |
 | `⌘F` | find in pane |
 | `⌘⇧F` | find in all panes |

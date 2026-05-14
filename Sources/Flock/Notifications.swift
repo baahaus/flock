@@ -36,10 +36,6 @@ enum FlockNotifications {
         send(title: "Flock", body: "\(paneName) — \(body)", key: "pane-\(paneIndex)")
     }
 
-    static func sendAgentStateChange(paneName: String, paneIndex: Int, state: String) {
-        send(title: "Flock", body: "\(paneName) — \(state)", key: "pane-\(paneIndex)")
-    }
-
     private static func send(title: String, body: String, key: String) {
         // Debounce: skip if same message for same pane within interval
         let now = Date()

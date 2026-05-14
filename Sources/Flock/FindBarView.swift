@@ -263,8 +263,10 @@ class FindBarView: NSView, NSTextFieldDelegate {
 
         // New term -- clear previous state and find the first match.
         terminalView?.clearSearch()
+        matchCursor = 0
         let found = terminalView?.findNext(term) ?? false
         lastFindSucceeded = found
+        if found { matchCursor = 1 }
         updateStatusLabel()
     }
 
@@ -296,14 +298,29 @@ class FindBarView: NSView, NSTextFieldDelegate {
         guard !currentTerm.isEmpty else { return }
         let found = terminalView?.findNext(currentTerm) ?? false
         lastFindSucceeded = found
+        if found { matchCursor += 1 }
         updateStatusLabel()
+        flashStatus()
     }
 
     @objc func findPrevious(_ sender: Any?) {
         guard !currentTerm.isEmpty else { return }
         let found = terminalView?.findPrevious(currentTerm) ?? false
         lastFindSucceeded = found
+        if found { matchCursor -= 1 }
         updateStatusLabel()
+        flashStatus()
+    }
+
+    private var matchCursor: Int = 0
+
+    private func flashStatus() {
+        statusLabel.layer?.removeAllAnimations()
+        statusLabel.alphaValue = 0.3
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.18
+            statusLabel.animator().alphaValue = 1.0
+        }
     }
 
     @objc private func closeTapped(_ sender: Any?) {
@@ -317,8 +334,12 @@ class FindBarView: NSView, NSTextFieldDelegate {
             statusLabel.stringValue = ""
             return
         }
-        statusLabel.stringValue = lastFindSucceeded ? "Found" : "No results"
-        statusLabel.textColor = lastFindSucceeded ? Theme.textTertiary : Theme.textSecondary
+        if lastFindSucceeded {
+            statusLabel.stringValue = matchCursor > 0 ? "Match \(matchCursor)" : "Found"
+        } else {
+            statusLabel.stringValue = "No results"
+        }
+        statusLabel.textColor = lastFindSucceeded ? Theme.accent : Theme.textSecondary
     }
 
     // MARK: - Key equivalents (Cmd+G / Cmd+Shift+G)

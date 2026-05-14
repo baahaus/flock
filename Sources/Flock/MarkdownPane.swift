@@ -13,6 +13,7 @@ class MarkdownPane: FlockPane, NSTextViewDelegate {
     private var hasPendingLocalEdits = false
     private var isApplyingDiskContent = false
     private var isPresentingConflictAlert = false
+    private var fileMissingHandled = false
 
     override var firstResponderView: NSView { textView }
 
@@ -132,6 +133,11 @@ class MarkdownPane: FlockPane, NSTextViewDelegate {
         lastModifiedAt = fileModificationDate()
         reloadTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             guard let self else { return }
+            if !FileManager.default.fileExists(atPath: self.filePath) {
+                self.handleFileDeleted()
+                return
+            }
+            self.fileMissingHandled = false
             let modifiedAt = self.fileModificationDate()
             guard modifiedAt != self.lastModifiedAt else { return }
 
@@ -142,6 +148,38 @@ class MarkdownPane: FlockPane, NSTextViewDelegate {
             }
             self.lastModifiedAt = modifiedAt
             self.loadFromDisk()
+        }
+    }
+
+    private func handleFileDeleted() {
+        guard !fileMissingHandled else { return }
+        fileMissingHandled = true
+        textView.isEditable = false
+
+        let alert = NSAlert()
+        alert.messageText = "Markdown File Deleted"
+        alert.informativeText = "\(URL(fileURLWithPath: filePath).lastPathComponent) was removed from disk. Save a new copy here, or close this pane."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Save Here")
+        alert.addButton(withTitle: "Close Pane")
+
+        let handle: (NSApplication.ModalResponse) -> Void = { [weak self] response in
+            guard let self else { return }
+            if response == .alertFirstButtonReturn {
+                self.textView.isEditable = true
+                self.hasPendingLocalEdits = true
+                self.flushPendingSave(force: true)
+                self.fileMissingHandled = false
+                self.lastModifiedAt = self.fileModificationDate()
+            } else if let mgr = self.manager,
+                      let idx = mgr.panes.firstIndex(where: { $0 === self }) {
+                mgr.closePane(at: idx)
+            }
+        }
+        if let win = window ?? NSApp.keyWindow {
+            alert.beginSheetModal(for: win, completionHandler: handle)
+        } else {
+            handle(alert.runModal())
         }
     }
 

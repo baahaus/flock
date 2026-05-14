@@ -1051,8 +1051,8 @@
       <div class="pitch-grid">
         <div class="pitch-card pitch-hero">
           <span class="icon">{AI}</span>
-          <h3>agent mode</h3>
-          <p>throw tasks at a queue. watch agents pick them up and work through them in real time, with a live action timeline showing every read, edit, and command.</p>
+          <h3>watch them think</h3>
+          <p>every claude pane shows live state — thinking, reading, writing, waiting — and a change log overlay (&#8984;&#8679;L) of every file read, edit, and command, in real time.</p>
         </div>
         <div class="pitch-card">
           <span class="icon">[##]</span>
@@ -1077,7 +1077,7 @@
         <div class="pitch-card">
           <span class="icon">[!]</span>
           <h3>notifications</h3>
-          <p>go get coffee. flock taps you on the shoulder when an agent finishes something.</p>
+          <p>go get coffee. flock taps you on the shoulder when a long-running task finishes.</p>
         </div>
         <div class="pitch-card">
           <span class="icon">{z}</span>
@@ -1105,8 +1105,8 @@
         <div class="keycap" data-key="maximize"><kbd>&#8984;&#8629;</kbd><span>maximize</span></div>
         <div class="keycap" data-key="palette"><kbd>&#8984;K</kbd><span>palette</span></div>
         <div class="keycap" data-key="split"><kbd>&#8984;D</kbd><span>split</span></div>
-        <div class="keycap" data-key="agent"><kbd>&#8984;&#8679;A</kbd><span>agent mode</span></div>
         <div class="keycap" data-key="broadcast"><kbd>&#8984;&#8679;B</kbd><span>broadcast</span></div>
+        <div class="keycap" data-key="changelog"><kbd>&#8984;&#8679;L</kbd><span>change log</span></div>
       </div>
     </div>
   </section>
@@ -1119,7 +1119,7 @@
       <div class="section-label">// under the hood</div>
       <div class="section-title">native swift.<br>no electron. ever.</div>
       <p class="section-subtitle">
-        each pane is a real terminal powered by SwiftTerm. agent mode talks to claude code over stream-json and parses every event in real time. it's fast because it's not pretending to be a website.
+        each pane is a real terminal powered by SwiftTerm. claude panes parse session output in real time to surface state and a live change log. it's fast because it's not pretending to be a website.
       </p>
       <div class="tech-pills">
         <span class="pill">Swift 5.9</span>

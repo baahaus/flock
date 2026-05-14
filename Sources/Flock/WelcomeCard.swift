@@ -168,10 +168,11 @@ private class WelcomeCardView: NSView {
 
         // Shortcuts
         let shortcuts: [(key: String, desc: String)] = [
+            ("\u{2318}T", "new claude pane"),
+            ("\u{2318}\u{21E7}T", "new shell pane"),
             ("\u{2318}K", "command palette"),
             ("\u{2318}D", "split pane"),
-            ("\u{2318}\u{21E7}M", "memory panel"),
-            ("\u{2318}\u{21E7}A", "agent mode"),
+            ("\u{2318}\u{21E7}L", "change log overlay"),
             ("\u{2318},", "preferences"),
         ]
 

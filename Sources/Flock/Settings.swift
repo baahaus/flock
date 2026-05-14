@@ -22,8 +22,6 @@ class Settings {
         case globalHotkeyEnabled
         case globalHotkeyKeyCode
         case globalHotkeyModifiers
-        case maxParallelAgents
-        case memoryEnabled
         case showUsageTracker
         case autoCheckUpdates
         case lastRunVersion
@@ -97,22 +95,6 @@ class Settings {
             return UInt(defaults.integer(forKey: Key.globalHotkeyModifiers.rawValue))
         }
         set { defaults.set(Int(newValue), forKey: Key.globalHotkeyModifiers.rawValue); post(.globalHotkeyModifiers) }
-    }
-
-    var maxParallelAgents: Int {
-        get {
-            let v = defaults.integer(forKey: Key.maxParallelAgents.rawValue)
-            return v > 0 ? v : 3
-        }
-        set { defaults.set(newValue, forKey: Key.maxParallelAgents.rawValue); post(.maxParallelAgents) }
-    }
-
-    var memoryEnabled: Bool {
-        get {
-            if defaults.object(forKey: Key.memoryEnabled.rawValue) == nil { return true }
-            return defaults.bool(forKey: Key.memoryEnabled.rawValue)
-        }
-        set { defaults.set(newValue, forKey: Key.memoryEnabled.rawValue); post(.memoryEnabled) }
     }
 
     var showUsageTracker: Bool {

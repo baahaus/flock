@@ -14,8 +14,6 @@ enum PaneType {
 enum Direction { case left, right, up, down }
 
 class PaneManager {
-    static let agentModeDidChange = Notification.Name("FlockAgentModeDidChange")
-
     private(set) var panes: [FlockPane] = []
     private(set) var activePaneIndex: Int = -1
     private(set) var isMaximized: Bool = false
@@ -23,8 +21,6 @@ class PaneManager {
     weak var tabBar: TabBarView?
     weak var gridContainer: GridContainer?
     weak var statusBar: StatusBarView?
-    weak var agentModeView: AgentModeView?
-    private(set) var isAgentMode: Bool = false
 
     // Find bar
     private var findBar: FindBarView?
@@ -257,38 +253,6 @@ class PaneManager {
                 pane.layer?.add(pulse, forKey: "broadcastPulse")
             }
         }
-    }
-
-    // MARK: - Agent Mode
-
-    func toggleAgentMode() {
-        isAgentMode.toggle()
-
-        // Cross-fade transition
-        let incoming: NSView? = isAgentMode ? agentModeView : gridContainer
-        let outgoing: NSView? = isAgentMode ? gridContainer : agentModeView
-
-        incoming?.alphaValue = 0
-        incoming?.isHidden = false
-
-        NSAnimationContext.runAnimationGroup({ ctx in
-            ctx.duration = Theme.Anim.normal
-            ctx.timingFunction = Theme.Anim.snappyTimingFunction
-            incoming?.animator().alphaValue = 1
-            outgoing?.animator().alphaValue = 0
-        }, completionHandler: {
-            outgoing?.isHidden = true
-            outgoing?.alphaValue = 1
-        })
-
-        // Trigger layout update
-        if let window = gridContainer?.window {
-            window.contentView?.resizeSubviews(withOldSize: window.contentView?.bounds.size ?? .zero)
-        }
-
-        NotificationCenter.default.post(name: Self.agentModeDidChange, object: nil)
-        tabBar?.update()
-        statusBar?.update()
     }
 
     // MARK: - Split Panes
