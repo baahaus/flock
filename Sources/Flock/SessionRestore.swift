@@ -5,6 +5,7 @@ struct SessionPane: Codable {
     let workingDirectory: String?
     let customName: String?
     let sessionId: String?
+    let draft: String?      // unsent shell command line, restored on next launch
 }
 
 /// Recursive node that mirrors SplitNode for serialization.
@@ -95,5 +96,84 @@ enum SessionRestore {
 
     static func clear() {
         try? FileManager.default.removeItem(at: sessionURL)
+    }
+}
+
+// MARK: - Workspaces
+
+/// One persisted workspace: metadata + its pane/tab layout.
+struct WorkspaceData: Codable {
+    let id: String
+    let name: String
+    let colorHex: Int?
+    let createdAt: Date
+    let lastUsedAt: Date
+    let layout: SessionLayout
+}
+
+struct WorkspacesIndex: Codable {
+    let activeId: String
+    let order: [String]
+}
+
+/// Stores each workspace as its own JSON file under `workspaces/`, plus an
+/// `index.json` recording order + the active workspace. Migrates a legacy
+/// single `session.json` into one "Main" workspace on first run.
+enum WorkspaceStore {
+    private static var dir: URL {
+        let d = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/Flock/workspaces")
+        try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
+        return d
+    }
+    private static var indexURL: URL { dir.appendingPathComponent("index.json") }
+
+    static func saveAll(workspaces: [WorkspaceData], activeId: String) {
+        let enc = JSONEncoder()
+        let liveIds = Set(workspaces.map { $0.id })
+        for wd in workspaces {
+            if let data = try? enc.encode(wd) {
+                try? data.write(to: dir.appendingPathComponent("\(wd.id).json"), options: .atomic)
+            }
+        }
+        // Drop files for workspaces that no longer exist.
+        if let files = try? FileManager.default.contentsOfDirectory(atPath: dir.path) {
+            for f in files where f.hasSuffix(".json") && f != "index.json" {
+                let id = String(f.dropLast(".json".count))
+                if !liveIds.contains(id) {
+                    try? FileManager.default.removeItem(at: dir.appendingPathComponent(f))
+                }
+            }
+        }
+        let idx = WorkspacesIndex(activeId: activeId, order: workspaces.map { $0.id })
+        if let data = try? enc.encode(idx) {
+            try? data.write(to: indexURL, options: .atomic)
+        }
+    }
+
+    static func loadAll() -> (workspaces: [WorkspaceData], activeId: String)? {
+        let dec = JSONDecoder()
+        if let idxData = try? Data(contentsOf: indexURL),
+           let idx = try? dec.decode(WorkspacesIndex.self, from: idxData) {
+            var result: [WorkspaceData] = []
+            for id in idx.order {
+                let url = dir.appendingPathComponent("\(id).json")
+                if let d = try? Data(contentsOf: url),
+                   let wd = try? dec.decode(WorkspaceData.self, from: d) {
+                    result.append(wd)
+                }
+            }
+            guard !result.isEmpty else { return nil }
+            let active = result.contains { $0.id == idx.activeId } ? idx.activeId : result[0].id
+            return (result, active)
+        }
+
+        // Migration: wrap the legacy single session as one "Main" workspace.
+        if let legacy = SessionRestore.restore() {
+            let wd = WorkspaceData(id: UUID().uuidString, name: "Main", colorHex: nil,
+                                   createdAt: Date(), lastUsedAt: Date(), layout: legacy)
+            return ([wd], wd.id)
+        }
+        return nil
     }
 }

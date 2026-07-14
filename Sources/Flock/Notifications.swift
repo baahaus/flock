@@ -47,7 +47,7 @@ enum FlockNotifications {
             return
         }
         lastNotification[key] = (message: body, time: now)
-        let shouldNotify = useNative
+        let shouldNotify = _useNative  // read backing field directly; `useNative` re-locks (NSLock is non-recursive → deadlock)
         lock.unlock()
 
         if shouldNotify {

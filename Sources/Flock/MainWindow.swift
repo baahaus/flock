@@ -3,6 +3,7 @@ import AppKit
 class FlockWindow: NSWindow {
     let paneManager: PaneManager
     let tabBar: TabBarView
+    let workspaceBar: WorkspaceBarView
     let gridContainer: GridContainer
     let statusBar: StatusBarView
     let rootView: FlockRootView
@@ -10,6 +11,7 @@ class FlockWindow: NSWindow {
     init(paneManager: PaneManager) {
         self.paneManager = paneManager
         self.tabBar = TabBarView(paneManager: paneManager)
+        self.workspaceBar = WorkspaceBarView(paneManager: paneManager)
         self.gridContainer = GridContainer(paneManager: paneManager)
         self.statusBar = StatusBarView(paneManager: paneManager)
         self.rootView = FlockRootView()
@@ -29,6 +31,8 @@ class FlockWindow: NSWindow {
         paneManager.tabBar = tabBar
         paneManager.gridContainer = gridContainer
         paneManager.statusBar = statusBar
+        paneManager.workspaceBar = workspaceBar
+        paneManager.window = self
 
         titlebarAppearsTransparent = true
         titleVisibility = .hidden
@@ -44,10 +48,12 @@ class FlockWindow: NSWindow {
                                                name: Theme.themeDidChange, object: nil)
 
         rootView.tabBar = tabBar
+        rootView.workspaceBar = workspaceBar
         rootView.gridContainer = gridContainer
         rootView.statusBar = statusBar
         rootView.addSubview(rootView.tabBarEffectView)
         rootView.addSubview(tabBar)
+        rootView.addSubview(workspaceBar)
         rootView.addSubview(gridContainer)
         rootView.addSubview(statusBar)
         contentView = rootView
@@ -83,6 +89,7 @@ extension FlockWindow: NSWindowDelegate {
 
 class FlockRootView: NSView {
     weak var tabBar: NSView?
+    weak var workspaceBar: NSView?
     weak var gridContainer: NSView?
     weak var statusBar: NSView?
     let tabBarEffectView: NSVisualEffectView = {
@@ -122,10 +129,12 @@ class FlockRootView: NSView {
         let inset = titlebarInset
         let tabH = Theme.tabBarHeight + inset
         let statusH = Theme.statusHeight
+        let wsH = WorkspaceBarView.height
 
         tabBarEffectView.frame = NSRect(x: 0, y: 0, width: w, height: tabH)
         tabBar?.frame       = NSRect(x: 0, y: 0, width: w, height: tabH)
-        gridContainer?.frame = NSRect(x: 0, y: tabH, width: w, height: h - tabH - statusH)
+        workspaceBar?.frame = NSRect(x: 0, y: tabH, width: w, height: wsH)
+        gridContainer?.frame = NSRect(x: 0, y: tabH + wsH, width: w, height: h - tabH - wsH - statusH)
         statusBar?.frame    = NSRect(x: 0, y: h - statusH, width: w, height: statusH)
     }
 }

@@ -48,7 +48,7 @@ enum ShellEnhancer {
 
     /// Creates a temp ZDOTDIR and returns the environment array for startProcess.
     /// Returns nil if the shell isn't zsh or plugin isn't found.
-    static func enhancedEnvironment(workingDirectory: String?) -> (env: [String], zdotdir: String)? {
+    static func enhancedEnvironment(workingDirectory: String?, restoreDraft: String? = nil) -> (env: [String], zdotdir: String)? {
         let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
         guard shell.hasSuffix("/zsh") else { return nil }
         guard let plugin = pluginPath else {
@@ -70,15 +70,36 @@ enum ShellEnhancer {
         """
         try? zshenv.write(toFile: zdotdir + "/.zshenv", atomically: true, encoding: .utf8)
 
-        // .zshrc — chain user's .zshrc, then load enhancements
+        // .zshrc — chain user's .zshrc, then load enhancements.
+        // The Flock block uses the absolute zdotdir path (not $ZDOTDIR, which is
+        // reassigned to the user's home above) and is fully guarded so it can
+        // never break shell startup on an older zsh.
         let zshrc = """
         ZDOTDIR="\(home)"
         [[ -f "\(home)/.zshrc" ]] && source "\(home)/.zshrc"
         source "\(plugin)"
         ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE="fg=244"
         ZSH_AUTOSUGGEST_STRATEGY=(history completion)
+
+        # Flock: mirror the current command line so it can be restored next launch
+        _flock_buf="\(zdotdir)/buffer"
+        _flock_save() { printf '%s' "$BUFFER" > "$_flock_buf" 2>/dev/null }
+        _flock_clear() { : > "$_flock_buf" 2>/dev/null }
+        autoload -Uz add-zle-hook-widget 2>/dev/null
+        add-zle-hook-widget zle-line-pre-redraw _flock_save 2>/dev/null
+        add-zle-hook-widget zle-line-finish _flock_clear 2>/dev/null
+        # Flock: restore a draft command line saved from a previous session
+        if [[ -s "\(zdotdir)/restore" ]]; then
+          print -z -- "$(cat "\(zdotdir)/restore" 2>/dev/null)" 2>/dev/null
+          rm -f "\(zdotdir)/restore" 2>/dev/null
+        fi
         """
         try? zshrc.write(toFile: zdotdir + "/.zshrc", atomically: true, encoding: .utf8)
+
+        // Seed the draft to restore at the next prompt (read by the block above).
+        if let draft = restoreDraft, !draft.isEmpty {
+            try? draft.write(toFile: zdotdir + "/restore", atomically: true, encoding: .utf8)
+        }
 
         // Build environment array
         var env = ProcessInfo.processInfo.environment

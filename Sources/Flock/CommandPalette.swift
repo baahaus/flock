@@ -154,6 +154,9 @@ class CommandPalette {
                 guard let win = self?.window else { return }
                 PreferencesView.show(on: win)
             },
+            CommandAction(name: "Allow Microphone (Voice Dictation)", shortcut: "", category: "View") {
+                VoiceMode.promptOrOpenSettings()
+            },
             CommandAction(name: "Find in Terminal", shortcut: "⌘F", category: "View") { [weak self] in
                 self?.paneManager?.showFindBar()
             },
@@ -215,7 +218,36 @@ class CommandPalette {
                 Settings.shared.themeId = theme.id
                 Theme.active = theme
             }
+        } + workspaceActions()
+    }
+
+    private func workspaceActions() -> [CommandAction] {
+        var actions: [CommandAction] = [
+            CommandAction(name: "New Workspace", shortcut: "⌘⌃N", category: "Workspaces") { [weak self] in
+                self?.paneManager?.addWorkspace()
+            },
+            CommandAction(name: "Next Workspace", shortcut: "⌘⌃]", category: "Workspaces") { [weak self] in
+                self?.paneManager?.cycleWorkspace(forward: true)
+            },
+            CommandAction(name: "Previous Workspace", shortcut: "⌘⌃[", category: "Workspaces") { [weak self] in
+                self?.paneManager?.cycleWorkspace(forward: false)
+            },
+            CommandAction(name: "Rename Workspace", shortcut: "", category: "Workspaces") {
+                NSApp.sendAction(#selector(AppDelegate.renameWorkspace(_:)), to: nil, from: nil)
+            },
+            CommandAction(name: "Close Workspace", shortcut: "⌘⌃W", category: "Workspaces") { [weak self] in
+                self?.paneManager?.closeActiveWorkspace()
+            },
+        ]
+        // One "Switch to <name>" entry per existing workspace.
+        if let mgr = paneManager {
+            for (i, ws) in mgr.workspaces.enumerated() {
+                actions.append(CommandAction(name: "Switch to: \(ws.name)", shortcut: "", category: "Workspaces") { [weak self] in
+                    self?.paneManager?.switchToWorkspace(at: i)
+                })
+            }
         }
+        return actions
     }
 
     private func applyPreset(_ preset: LayoutPreset) {

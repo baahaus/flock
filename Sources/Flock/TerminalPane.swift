@@ -28,6 +28,14 @@ class TerminalPane: FlockPane, LocalProcessTerminalViewDelegate {
     private var costStatsView: CostStatsView?
     private(set) var isCostStatsVisible: Bool = false
 
+    // Agent-process liveness (Claude / agent panes only). True while the agent
+    // process is actually running; flips to false once it exits and the pane is
+    // back to a bare shell — drives the status label, borders, and what we save.
+    private(set) var agentProcessLive: Bool
+    private var hasSeenAgentAlive = false
+    private var agentPollTimer: Timer?
+    private var agentPollCount = 0
+
     // Agent state parsing (Claude panes only)
     let outputParser = ClaudeOutputParser()
 
@@ -48,8 +56,9 @@ class TerminalPane: FlockPane, LocalProcessTerminalViewDelegate {
 
     override var firstResponderView: NSView { terminalView }
 
-    init(type: PaneType, manager: PaneManager, workingDirectory: String? = nil) {
+    init(type: PaneType, manager: PaneManager, workingDirectory: String? = nil, draft: String? = nil) {
         self.terminalView = FlockTerminalView(frame: .zero)
+        self.agentProcessLive = type.isAgent
         super.init(type: type, manager: manager)
 
         terminalView.owningPane = self
@@ -79,6 +88,13 @@ class TerminalPane: FlockPane, LocalProcessTerminalViewDelegate {
         // Terminal
         let fontSize = Settings.shared.fontSize
         terminalView.nativeBackgroundColor = Theme.terminalBg
+        // Keep the view's layer backing in sync with the themed terminal bg.
+        // SwiftTerm only stamps layer.backgroundColor once at init (from its
+        // default dark color) and its nativeBackgroundColor setter never
+        // refreshes it. With disableFullRedrawOnAnyChanges, a resize repaints
+        // only dirty cells, so the un-repainted area would otherwise expose the
+        // stale black backing (e.g. the black flash when un-maximizing a pane).
+        terminalView.layer?.backgroundColor = Theme.terminalBg.cgColor
         terminalView.nativeForegroundColor = Theme.terminalFg
         terminalView.font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
         installAnsiColors()
@@ -93,7 +109,7 @@ class TerminalPane: FlockPane, LocalProcessTerminalViewDelegate {
         let name = (shell as NSString).lastPathComponent
         let cwd = workingDirectory ?? ProcessInfo.processInfo.environment["HOME"]
 
-        if let enhanced = ShellEnhancer.enhancedEnvironment(workingDirectory: workingDirectory) {
+        if let enhanced = ShellEnhancer.enhancedEnvironment(workingDirectory: workingDirectory, restoreDraft: draft) {
             self.zdotdir = enhanced.zdotdir
             terminalView.startProcess(executable: shell, environment: enhanced.env, execName: "-\(name)", currentDirectory: cwd)
         } else {
@@ -133,6 +149,9 @@ class TerminalPane: FlockPane, LocalProcessTerminalViewDelegate {
             }
         }
 
+        // Watch whether the agent process is alive (Claude / agent panes).
+        if type.isAgent { startAgentWatch() }
+
         // Listen for changes
         NotificationCenter.default.addObserver(self, selector: #selector(settingsChanged(_:)),
                                                name: Settings.didChange, object: nil)
@@ -157,6 +176,7 @@ class TerminalPane: FlockPane, LocalProcessTerminalViewDelegate {
 
     override func themeDidChange() {
         terminalView.nativeBackgroundColor = Theme.terminalBg
+        terminalView.layer?.backgroundColor = Theme.terminalBg.cgColor
         terminalView.nativeForegroundColor = Theme.terminalFg
         installAnsiColors()
         terminalView.setNeedsDisplay(terminalView.bounds)
@@ -180,10 +200,11 @@ class TerminalPane: FlockPane, LocalProcessTerminalViewDelegate {
     // MARK: - Title bar
 
     override func updateTitleBar() {
-        let stateLabel = (agentState != .idle) ? agentState.label : nil
-        titleProcessLabel.stringValue = stateLabel ?? processTitle ?? paneType.label
-        titleProcessLabel.textColor = (agentState == .waiting) ? Theme.accent
-            : (agentState == .error) ? NSColor(hex: 0xFF3B30)
+        let agentLive = isAgentDisplayActive
+        let stateLabel = (agentLive && agentState != .idle) ? agentState.label : nil
+        titleProcessLabel.stringValue = stateLabel ?? processTitle ?? displayLabel
+        titleProcessLabel.textColor = (agentLive && agentState == .waiting) ? Theme.accent
+            : (agentLive && agentState == .error) ? NSColor(hex: 0xFF3B30)
             : Theme.textSecondary
         if let dir = currentDirectory {
             let home = FileManager.default.homeDirectoryForCurrentUser.path
@@ -195,15 +216,29 @@ class TerminalPane: FlockPane, LocalProcessTerminalViewDelegate {
 
     // MARK: - Per-session cost tracking
 
-    // Pricing per million tokens (from LiteLLM, updated 2026-04)
-    private static let costPricing: [String: (input: Double, output: Double, cacheRead: Double, cacheCreate: Double)] = [
-        "claude-opus-4-6":            (5.0,   25.0,  0.50,  6.25),
-        "claude-opus-4-5-20251101":   (5.0,   25.0,  0.50,  6.25),
-        "claude-sonnet-4-5-20250929": (3.0,   15.0,  0.30,  3.75),
-        "claude-sonnet-4-6":          (3.0,   15.0,  0.30,  3.75),
-        "claude-haiku-4-5-20251001":  (0.80,  4.0,   0.08,  1.0),
-    ]
-    private static let defaultCostPricing = (input: 3.0, output: 15.0, cacheRead: 0.30, cacheCreate: 3.75)
+    // Pricing per million tokens. Anthropic first-party rates — Opus/Sonnet are
+    // flat across the 1M context window (no >200K long-context premium). Cache
+    // rates derive from the input rate: read = 0.10x, 5m write = 1.25x, 1h write
+    // = 2.0x. Claude Code uses the 1h cache heavily, so the two write pools must
+    // be priced separately.
+    private struct ModelPricing {
+        let input: Double
+        let output: Double
+        var cacheRead: Double { input * 0.10 }
+        var cacheWrite5m: Double { input * 1.25 }
+        var cacheWrite1h: Double { input * 2.0 }
+    }
+
+    /// Resolve pricing by model-id family so aliases, future minor versions, and
+    /// dated snapshots all match (e.g. "claude-opus-4-8",
+    /// "claude-haiku-4-5-20251001"). Unknown ids fall back to Sonnet-tier.
+    private static func pricing(forModel model: String) -> ModelPricing {
+        let m = model.lowercased()
+        if m.contains("fable") || m.contains("mythos") { return ModelPricing(input: 10.0, output: 50.0) }
+        if m.contains("opus")  { return ModelPricing(input: 5.0, output: 25.0) }
+        if m.contains("haiku") { return ModelPricing(input: 1.0, output: 5.0) }
+        return ModelPricing(input: 3.0, output: 15.0)  // sonnet / default
+    }
 
     /// Schedules a cost update shortly after output arrives (debounced).
     private func scheduleCostUpdate() {
@@ -292,17 +327,30 @@ class TerminalPane: FlockPane, LocalProcessTerminalViewDelegate {
                         let cacheCreate = usage["cache_creation_input_tokens"] as? Int ?? 0
                         let model = message["model"] as? String ?? ""
 
-                        tokens += input + output
+                        // Split cache-creation by TTL when present. Claude Code uses the
+                        // 1h cache heavily (billed 2x input vs 1.25x for 5m). Fall back to
+                        // treating any remainder as 5m when the breakdown is absent.
+                        let creationDetail = usage["cache_creation"] as? [String: Any]
+                        let cache1h = creationDetail?["ephemeral_1h_input_tokens"] as? Int ?? 0
+                        let cache5m = creationDetail?["ephemeral_5m_input_tokens"] as? Int
+                            ?? max(0, cacheCreate - cache1h)
+
                         inputTok += input
                         outputTok += output
                         cacheReadTok += cacheRead
                         cacheCreateTok += cacheCreate
-                        let p = Self.costPricing[model] ?? Self.defaultCostPricing
-                        let baseInput = max(0, input - cacheRead - cacheCreate)
-                        cost += Double(baseInput) / 1_000_000 * p.input
-                             + Double(output) / 1_000_000 * p.output
-                             + Double(cacheRead) / 1_000_000 * p.cacheRead
-                             + Double(cacheCreate) / 1_000_000 * p.cacheCreate
+                        // Total volume processed includes both cache pools, not just
+                        // uncached input + output.
+                        tokens += input + output + cacheRead + cacheCreate
+
+                        let p = Self.pricing(forModel: model)
+                        // input_tokens is already the uncached input — bill it at full
+                        // input rate (do NOT subtract the separate cache counters).
+                        cost += Double(input)     / 1_000_000 * p.input
+                             + Double(output)     / 1_000_000 * p.output
+                             + Double(cacheRead)  / 1_000_000 * p.cacheRead
+                             + Double(cache5m)    / 1_000_000 * p.cacheWrite5m
+                             + Double(cache1h)    / 1_000_000 * p.cacheWrite1h
                     }
                 }
             }
@@ -574,8 +622,116 @@ class TerminalPane: FlockPane, LocalProcessTerminalViewDelegate {
         }
     }
 
+    // MARK: - Agent process watch
+
+    /// Whether the pane should currently present as its agent (Claude / CLI):
+    /// it was created as one AND that process is alive. Once the agent exits we
+    /// present as a plain shell.
+    var isAgentDisplayActive: Bool { paneType.isAgent && agentProcessLive }
+
+    /// Label shown in the title / tab: falls back to "shell" once the agent
+    /// process has exited.
+    var displayLabel: String {
+        (paneType.isAgent && !agentProcessLive) ? "shell" : paneType.label
+    }
+
+    override var claudeBordersActive: Bool {
+        super.claudeBordersActive && agentProcessLive
+    }
+
+    private func startAgentWatch() {
+        agentPollTimer?.invalidate()
+        agentPollTimer = Timer.scheduledTimer(withTimeInterval: 4.0, repeats: true) { [weak self] _ in
+            self?.pollAgentProcess()
+        }
+    }
+
+    private func pollAgentProcess() {
+        guard paneType.isAgent else { return }
+        if agentProcessIsAlive() {
+            hasSeenAgentAlive = true
+            setAgentProcessLive(true)
+        } else if hasSeenAgentAlive {
+            // We saw it running and now it's gone — it exited.
+            setAgentProcessLive(false)
+        } else {
+            // Never observed alive yet — give it a grace window to launch
+            // (slow start, or "claude" not installed) before falling back.
+            agentPollCount += 1
+            if agentPollCount >= 4 { setAgentProcessLive(false) }  // ~16s
+        }
+    }
+
+    private func setAgentProcessLive(_ live: Bool) {
+        guard live != agentProcessLive else { return }
+        agentProcessLive = live
+        if !live {
+            // Fell back to a bare shell — drop the agent state.
+            agentState = .idle
+            outputParser.reset()
+        }
+        updateTitleBar()
+        updateBorderForState()
+        manager?.tabBar?.update()
+        manager?.statusBar?.update()
+    }
+
+    /// True iff the shell has a direct child process that is this pane's agent —
+    /// for Claude, a child with a `~/.claude/sessions/<pid>.json`; for an agent
+    /// CLI, a child whose name matches the launch command.
+    private func agentProcessIsAlive() -> Bool {
+        guard let proc = terminalView.process else { return false }
+        let shellPid = proc.shellPid
+        guard shellPid > 0 else { return false }
+        let agentCmd = paneType.agentCLI?.command
+
+        // Cheap + reliable: the terminal's foreground process group. If it's the
+        // shell itself, the shell is at its prompt → no agent running.
+        let fd = proc.childfd
+        let fg: pid_t = fd >= 0 ? tcgetpgrp(fd) : -1
+        if fg > 0 && fg == shellPid { return false }
+        // For an agent CLI, any non-shell foreground program counts as the agent
+        // (its process name may differ from the command, e.g. node).
+        if fg > 0, agentCmd != nil { return true }
+
+        // Claude (or when tcgetpgrp is unavailable): scan the shell's children.
+        let maxPids = 4096
+        var pids = [pid_t](repeating: 0, count: maxPids)
+        let bytes = proc_listpids(UInt32(PROC_ALL_PIDS), 0, &pids, Int32(maxPids * MemoryLayout<pid_t>.size))
+        let count = Int(bytes) / MemoryLayout<pid_t>.size
+        for i in 0..<count {
+            let pid = pids[i]
+            guard pid > 0 else { continue }
+            var info = proc_bsdshortinfo()
+            let n = proc_pidinfo(pid, PROC_PIDT_SHORTBSDINFO, 0, &info, Int32(MemoryLayout<proc_bsdshortinfo>.size))
+            guard n > 0, info.pbsi_ppid == UInt32(shellPid) else { continue }
+            // Direct child of our shell.
+            if paneType == .claude {
+                let f = FileManager.default.homeDirectoryForCurrentUser
+                    .appendingPathComponent(".claude/sessions/\(pid).json")
+                if FileManager.default.fileExists(atPath: f.path) { return true }
+            }
+            if let agentCmd {
+                var nameBuf = [CChar](repeating: 0, count: 256)
+                if proc_name(pid, &nameBuf, 256) > 0, String(cString: nameBuf) == agentCmd { return true }
+            }
+        }
+        return false
+    }
+
+    /// The shell's current unsent command line (mirrored by the injected zsh
+    /// config), or nil if empty / unavailable. Only meaningful when the pane is
+    /// a shell at its prompt.
+    func currentInputDraft() -> String? {
+        guard let zdotdir else { return nil }
+        guard let s = try? String(contentsOfFile: zdotdir + "/buffer", encoding: .utf8),
+              !s.isEmpty else { return nil }
+        return s
+    }
+
     override func shutdown() {
         costUpdateTimer?.invalidate()
+        agentPollTimer?.invalidate()
         if let obs = fontSizeObserver { NotificationCenter.default.removeObserver(obs) }
         if let dir = zdotdir { ShellEnhancer.cleanup(zdotdir: dir) }
         terminalView.terminate()

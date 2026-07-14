@@ -28,13 +28,42 @@ enum PaneType: Equatable {
 enum Direction { case left, right, up, down }
 
 class PaneManager {
-    private(set) var panes: [FlockPane] = []
-    private(set) var activePaneIndex: Int = -1
-    private(set) var isMaximized: Bool = false
+    // MARK: - Workspaces
+    // Each workspace keeps its panes (views + processes) alive while inactive;
+    // switching detaches the current panes from the grid and attaches the next.
+    private(set) var workspaces: [Workspace]
+    private(set) var activeWorkspace: Workspace
+
+    // Per-workspace state, proxied to the active workspace so the view layer
+    // (tabBar / statusBar / gridContainer) and every existing method keep
+    // working unchanged. Only mutated from within PaneManager.
+    var panes: [FlockPane] {
+        get { activeWorkspace.panes }
+        set { activeWorkspace.panes = newValue }
+    }
+    var activePaneIndex: Int {
+        get { activeWorkspace.activePaneIndex }
+        set { activeWorkspace.activePaneIndex = newValue }
+    }
+    var isMaximized: Bool {
+        get { activeWorkspace.isMaximized }
+        set { activeWorkspace.isMaximized = newValue }
+    }
+    var isBroadcasting: Bool {
+        get { activeWorkspace.isBroadcasting }
+        set { activeWorkspace.isBroadcasting = newValue }
+    }
+    // Split pane tree roots (one per tab) — per active workspace.
+    var tabNodes: [SplitNode] {
+        get { activeWorkspace.tabNodes }
+        set { activeWorkspace.tabNodes = newValue }
+    }
 
     weak var tabBar: TabBarView?
     weak var gridContainer: GridContainer?
     weak var statusBar: StatusBarView?
+    weak var workspaceBar: WorkspaceBarView?
+    weak var window: NSWindow?
 
     // Find bar
     private var findBar: FindBarView?
@@ -42,11 +71,11 @@ class PaneManager {
     // Global find
     private let globalFind = GlobalFindView()
 
-    // Broadcast mode
-    private(set) var isBroadcasting: Bool = false
-
-    // Split pane tree roots (one per tab)
-    private(set) var tabNodes: [SplitNode] = []
+    init() {
+        let initial = Workspace(name: "Main")
+        self.workspaces = [initial]
+        self.activeWorkspace = initial
+    }
 
     // MARK: - Pane lifecycle
 
@@ -196,8 +225,27 @@ class PaneManager {
         let responder = panes[index].firstResponderView
         responder.window?.makeFirstResponder(responder)
         closeFindBar()
+
+        // En mode maximisé, la grille ne rend que le tab node actif. Sans ce
+        // relayout, changer de session met à jour la TabBar mais pas le pane
+        // affiché.
+        if isMaximized {
+            showMaximizedActiveTab(animated: true)
+        }
+
         tabBar?.update()
         statusBar?.update()
+    }
+
+    /// Affiche le tab node actif en plein écran après un changement de focus
+    /// pendant le mode maximisé. Restaure l'alpha des panes qui redeviennent
+    /// visibles (ils ont pu être laissés à alphaValue 0 par le fade-out d'entrée).
+    private func showMaximizedActiveTab(animated: Bool) {
+        gridContainer?.layoutPanes(animated: animated)   // gère isHidden par tab node
+        guard let activeTab = activeTabIndex, activeTab < tabNodes.count else { return }
+        for pane in tabNodes[activeTab].allLeaves {
+            if animated { pane.animateFadeIn() } else { pane.alphaValue = 1 }
+        }
     }
 
     func toggleMaximize() {
@@ -269,6 +317,98 @@ class PaneManager {
         }
     }
 
+    // MARK: - Workspaces
+
+    @discardableResult
+    func addWorkspace(name: String? = nil) -> Workspace {
+        let ws = Workspace(name: name ?? "Workspace \(workspaces.count + 1)")
+        workspaces.append(ws)
+        switchTo(ws)
+        // A fresh workspace starts empty — give it a default pane.
+        if ws.panes.isEmpty { addPane(type: .claude) }
+        return ws
+    }
+
+    func switchTo(_ ws: Workspace) {
+        guard ws !== activeWorkspace, workspaces.contains(where: { $0 === ws }) else { return }
+        closeFindBar()
+        // Detach (don't shut down) the current workspace's panes — the processes
+        // keep running in the background.
+        for pane in activeWorkspace.panes {
+            pane.isFocused = false
+            pane.removeFromSuperview()
+        }
+        activeWorkspace.lastUsedAt = Date()
+        activeWorkspace = ws
+        ws.lastUsedAt = Date()
+        attachActiveWorkspace()
+    }
+
+    func switchToWorkspace(at index: Int) {
+        guard index >= 0, index < workspaces.count else { return }
+        switchTo(workspaces[index])
+    }
+
+    func cycleWorkspace(forward: Bool) {
+        guard workspaces.count > 1,
+              let i = workspaces.firstIndex(where: { $0 === activeWorkspace }) else { return }
+        let n = workspaces.count
+        switchTo(workspaces[forward ? (i + 1) % n : (i - 1 + n) % n])
+    }
+
+    func closeActiveWorkspace() {
+        guard workspaces.count > 1 else { return }   // always keep at least one
+        let closing = activeWorkspace
+        for pane in closing.panes {
+            pane.shutdown()
+            pane.removeFromSuperview()
+        }
+        let idx = workspaces.firstIndex { $0 === closing } ?? 0
+        workspaces.removeAll { $0 === closing }
+        activeWorkspace = workspaces[min(idx, workspaces.count - 1)]
+        activeWorkspace.lastUsedAt = Date()
+        attachActiveWorkspace()
+    }
+
+    func renameActiveWorkspace(_ name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        activeWorkspace.name = trimmed
+        updateWindowTitle()
+        workspaceBar?.update()
+        statusBar?.update()
+    }
+
+    /// Shut down every pane across all workspaces (called on app terminate so
+    /// background workspaces don't leave orphan processes).
+    func shutdownAllWorkspaces() {
+        for ws in workspaces {
+            for pane in ws.panes { pane.shutdown() }
+        }
+    }
+
+    /// Re-attach the active workspace's panes to the grid and restore its view
+    /// state (focus, layout, title bar).
+    private func attachActiveWorkspace() {
+        for pane in activeWorkspace.panes { gridContainer?.addSubview(pane) }
+        layoutAndUpdate(animated: false)
+        if activePaneIndex >= 0, activePaneIndex < panes.count {
+            focusPane(at: activePaneIndex)
+        } else if !panes.isEmpty {
+            focusPane(at: 0)
+        } else {
+            tabBar?.update()
+            statusBar?.update()
+        }
+        workspaceBar?.update()
+        updateWindowTitle()
+    }
+
+    private func updateWindowTitle() {
+        let title: String = workspaces.count > 1 ? "\(activeWorkspace.name) — Flock" : "Flock"
+        window?.title = title
+    }
+
     // MARK: - Split Panes
 
     func splitActivePane(direction: SplitDirection) {
@@ -310,12 +450,20 @@ class PaneManager {
     }
 
     func saveSession() {
-        // Capture each Claude pane's session ID from its running process before saving
-        for pane in panes {
-            (pane as? TerminalPane)?.captureSessionId()
+        // Capture each Claude pane's session ID from its running process before
+        // saving — across every workspace, not just the active one.
+        for ws in workspaces {
+            for pane in ws.panes { (pane as? TerminalPane)?.captureSessionId() }
         }
-        let tabs = tabNodes.map { encodeNode($0) }
-        SessionRestore.save(tabs: tabs, activeIndex: activePaneIndex)
+        let datas = workspaces.map { workspaceData(for: $0) }
+        WorkspaceStore.saveAll(workspaces: datas, activeId: activeWorkspace.id)
+    }
+
+    private func workspaceData(for ws: Workspace) -> WorkspaceData {
+        let tabs = ws.tabNodes.map { encodeNode($0) }
+        let layout = SessionLayout(panes: nil, activeIndex: ws.activePaneIndex, tabs: tabs)
+        return WorkspaceData(id: ws.id, name: ws.name, colorHex: ws.colorHex,
+                             createdAt: ws.createdAt, lastUsedAt: ws.lastUsedAt, layout: layout)
     }
 
     private func encodeNode(_ node: SplitNode) -> SessionNode {
@@ -331,7 +479,7 @@ class PaneManager {
 
     private func sessionPane(for pane: FlockPane) -> SessionPane {
         if let mp = pane as? MarkdownPane {
-            return SessionPane(type: "markdown", workingDirectory: mp.filePath, customName: mp.customName, sessionId: nil)
+            return SessionPane(type: "markdown", workingDirectory: mp.filePath, customName: mp.customName, sessionId: nil, draft: nil)
         }
         // Try multiple sources for working directory:
         // 1. OSC 7 reported directory (most accurate when shell is in foreground)
@@ -341,53 +489,60 @@ class PaneManager {
         let dir = pane.currentDirectory
             ?? termPane?.processWorkingDirectory()
             ?? termPane?.contextDirectory
+        // If the agent process has exited, the pane is really a shell now — save
+        // it as one so restore opens a shell in this directory instead of trying
+        // to relaunch/resume the agent.
+        let agentLive = termPane?.agentProcessLive ?? true
         // Use the session ID captured from the process's open files at shutdown
-        let sessionId: String? = pane.paneType == .claude
+        let sessionId: String? = (pane.paneType == .claude && agentLive)
             ? termPane?.resumeSessionId ?? "resume"
             : nil
         let typeString: String
         switch pane.paneType {
-        case .claude: typeString = "claude"
-        case .agent(let cli): typeString = "agent:\(cli.id)"
+        case .claude: typeString = agentLive ? "claude" : "shell"
+        case .agent(let cli): typeString = agentLive ? "agent:\(cli.id)" : "shell"
         default: typeString = "shell"
         }
+        // Capture the unsent command line only for panes that are a shell at the
+        // prompt (not a live agent TUI).
+        let draft: String? = (termPane?.isAgentDisplayActive == false) ? termPane?.currentInputDraft() : nil
         return SessionPane(
             type: typeString,
             workingDirectory: dir,
             customName: pane.customName,
-            sessionId: sessionId
+            sessionId: sessionId,
+            draft: draft
         )
     }
 
     func restoreSession() {
-        guard let layout = SessionRestore.restore() else { return }
+        guard let loaded = WorkspaceStore.loadAll() else { return }
+        var restored: [Workspace] = []
+        for wd in loaded.workspaces {
+            let ws = Workspace(id: wd.id, name: wd.name, colorHex: wd.colorHex,
+                               createdAt: wd.createdAt, lastUsedAt: wd.lastUsedAt)
+            buildPanes(into: ws, from: wd.layout)
+            restored.append(ws)
+        }
+        guard !restored.isEmpty else { return }
+        workspaces = restored
+        activeWorkspace = restored.first { $0.id == loaded.activeId } ?? restored[0]
+        // Attach only the active workspace; the rest stay alive but detached.
+        attachActiveWorkspace()
+    }
 
+    /// Build a workspace's tab tree + panes from saved layout WITHOUT attaching
+    /// to the grid (background workspaces stay alive but detached until visited).
+    private func buildPanes(into ws: Workspace, from layout: SessionLayout) {
         if let tabs = layout.tabs {
-            // New tree-based restore
-            for tab in tabs {
-                let node = restoreNode(tab)
-                tabNodes.append(node)
-                for pane in node.allLeaves {
-                    gridContainer?.addSubview(pane)
-                }
-            }
-            rebuildPanesFromNodes()
-        } else if let flatPanes = layout.panes {
-            // Legacy flat restore
-            for sp in flatPanes {
-                let pane = restorePane(sp)
-                panes.append(pane)
-                tabNodes.append(SplitNode(pane: pane))
-                gridContainer?.addSubview(pane)
-            }
+            for tab in tabs { ws.tabNodes.append(restoreNode(tab)) }
+        } else if let flat = layout.panes {
+            for sp in flat { ws.tabNodes.append(SplitNode(pane: restorePane(sp))) }
         }
-
-        if layout.activeIndex >= 0, layout.activeIndex < panes.count {
-            focusPane(at: layout.activeIndex)
-        } else if !panes.isEmpty {
-            focusPane(at: 0)
-        }
-        layoutAndUpdate(animated: false)
+        ws.panes = ws.tabNodes.flatMap { $0.allLeaves }
+        ws.activePaneIndex = ws.panes.isEmpty
+            ? -1
+            : min(max(0, layout.activeIndex), ws.panes.count - 1)
     }
 
     private func restoreNode(_ sessionNode: SessionNode) -> SplitNode {
@@ -419,7 +574,7 @@ class PaneManager {
         } else {
             type = sp.type == "shell" ? .shell : .claude
         }
-        let pane = TerminalPane(type: type, manager: self, workingDirectory: sp.workingDirectory)
+        let pane = TerminalPane(type: type, manager: self, workingDirectory: sp.workingDirectory, draft: sp.draft)
         pane.customName = sp.customName
         if type == .claude, let sid = sp.sessionId {
             pane.shouldResume = true
@@ -554,6 +709,10 @@ class PaneManager {
 
     func handleClick(event: NSEvent) {
         for (i, pane) in panes.enumerated() {
+            // Skip hidden panes — in maximized mode the non-active tab's panes
+            // keep their old (quadrant) frames; without this a click inside the
+            // maximized pane could hit-test a hidden pane and switch to it.
+            if pane.isHidden { continue }
             let pt = pane.convert(event.locationInWindow, from: nil)
             if pane.bounds.contains(pt) {
                 if i != activePaneIndex { focusPane(at: i) }

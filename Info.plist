@@ -26,6 +26,8 @@
 	<string>Flock terminal sessions need file access.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Flock needs the microphone so Claude Code's voice dictation (/voice) can transcribe your speech into the prompt.</string>
 	<key>NSRemovableVolumesUsageDescription</key>
 	<string>Flock terminal sessions need file access.</string>
 	<key>NSSupportsAutomaticTermination</key>
